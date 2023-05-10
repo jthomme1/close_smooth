@@ -9,14 +9,16 @@ static NUM_THREADS: Lazy<usize> = Lazy::new(|| thread::available_parallelism().u
 
 pub struct Smooths {
     pub b_ind: usize,
+    pub lower_bound: u128,
     pub upper_bound: u128,
     pub smooths: Vec<u128>,
 }
 
 impl Smooths {
-    pub fn new(upper_bound: u128, b_ind: usize) -> Self {
+    pub fn new(lower_bound: u128, upper_bound: u128, b_ind: usize) -> Self {
         let mut ret = Smooths {
             b_ind: b_ind,
+            lower_bound: lower_bound,
             upper_bound: upper_bound,
             smooths: vec![],
         };
@@ -28,6 +30,7 @@ impl Smooths {
     }
 
     fn add_prime(&mut self, ind: usize) {
+        let lower_bound = self.lower_bound;
         let upper_bound = self.upper_bound;
         let generate_with_fixed = |start_off: usize| {
             let mut c = Composite::new(ind, 1);
@@ -39,7 +42,9 @@ impl Smooths {
             let mut new_smooths: Vec<u128> = vec![];
 
             loop {
-                new_smooths.push(c.value);
+                if c.value >= lower_bound {
+                    new_smooths.push(c.value);
+                }
                 if !c.inc_vec_by_n_with_bound(*NUM_THREADS, upper_bound) {
                     break;
                 }
@@ -62,31 +67,5 @@ impl Smooths {
         self.smooths.append(&mut new_smooths);
         self.smooths.par_sort_unstable();
     }
-
-    //TODO: CHECK AGAIN
-    pub fn find_ind_gt(&self, b: u128) -> Option<usize> {
-        if self.smooths.len() == 0 || self.smooths[self.smooths.len()-1] <= b {
-            return None;
-        }
-        let ind = match self.smooths.binary_search(&b) {
-            Ok(x) => x+1,
-            Err(x) => x,
-        };
-        assert!(self.smooths[ind] > b);
-        Some(ind)
-    }
-
-    pub fn find_ind_le(&self, b: u128) -> Option<usize> {
-        if self.smooths.len() == 0 || self.smooths[0] > b {
-            return None;
-        }
-        let ind = match self.smooths.binary_search(&b) {
-            Ok(x) => x,
-            Err(x) => x-1,
-        };
-        assert!(self.smooths[ind] <= b);
-        Some(ind)
-    }
-
 }
 

@@ -4,6 +4,8 @@ use once_cell::sync::Lazy;
 use primal;
 use std::env;
 use integer_sqrt::IntegerSquareRoot;
+use rayon::prelude::*;
+use std::collections::HashSet;
 
 pub mod composite;
 pub mod smooths;
@@ -18,89 +20,114 @@ static PRIMES: Lazy<Vec<u128>> = Lazy::new(||
                                            .map(|x| u128::try_from(x).unwrap())
                                            .collect());
 
+fn smooths_in(a: u128, b: u128, B: u128) -> Vec<u128> {
+    println!("Recursing into interval: [{a}, {b}]");
+    assert!(a < b);
+    // base case
+    if a < B*B {
+        println!("Entering base case for interval: [{a}, {b}]");
+        let ind: usize = PRIMES.binary_search(&B).unwrap();
+        let smooths = Smooths::new(a, b, ind);
+        println!("Returning {} nrs from base case for interval: [{a}, {b}]", smooths.smooths.len());
+        return smooths.smooths;
+    }
+    // rounding down is fine, because rounding up would result in a product outside the bounds
+    // also, rounding down we don't lose anything because we're considering integers
+    let ub_x1 = b.integer_sqrt();
+    //println!("upper_bound_smaller_factor: {ub_x1}");
+    // we need to round up because otherwise we could get a product outside of the interval
+    // also, we don't lose anything rounding up because we're considering integers
+    let mut lb_x2 = a.integer_sqrt();
+    if lb_x2 * lb_x2 < b {
+        lb_x2 += 1;
+    }
+    //println!("lower_bound_bigger_factor: {lb_x2}");
+
+    let ub_x2 = (B*b).integer_sqrt();
+    let mut lb_x1= (a/B).integer_sqrt();
+    if lb_x1 * lb_x1 < a/B {
+        lb_x1 += 1;
+    }
+    let smaller_smooths = smooths_in(lb_x1, ub_x2, B);
+
+    let ub_x2_ind = smaller_smooths.len()-1;
+    let lb_x1_ind = 0;
+
+    let ub_x1_ind = match smaller_smooths.binary_search(&ub_x1) {
+        Ok(i) => i+1,
+        Err(i) => i,
+    };
+    let lb_x2_ind = match smaller_smooths.binary_search(&lb_x2) {
+        Ok(i) => i,
+        Err(i) => i,
+    };
+
+    /*
+    println!("x1_range: [{lb_x1}, {ub_x1}]");
+    println!("The first smooth number in there: {}", smaller_smooths[lb_x1_ind]);
+    println!("The first smooth number after: {}", smaller_smooths[ub_x1_ind]);
+    println!("x2_range [{lb_x2}, {ub_x2}]");
+    println!("The first smooth number in there: {}", smaller_smooths[lb_x2_ind]);
+    println!("The first smooth number after: {}", smaller_smooths[ub_x2_ind]);
+    */
+    let x1_range = &smaller_smooths[lb_x1_ind..ub_x1_ind];
+    let x2_range = &smaller_smooths[lb_x2_ind..ub_x2_ind];
+
+    let mut smooth_set = HashSet::new();
+
+    for x1 in x1_range {
+        let up = b/x1;
+        let mut low = a/x1;
+        if low * x1 < a {
+            low += 1;
+        }
+        //println!("For {small}, the interval for the bigger number is: [{low}, {up}]");
+        // up_ind is not inclusive
+        let up_ind = match x2_range.binary_search(&up) {
+            Ok(i) => i+1,
+            Err(i) => i,
+        };
+        // low_ind is inclusive
+        let low_ind = match x2_range.binary_search(&low) {
+            Ok(i) => i,
+            Err(i) => i,
+        };
+        //println!("x2_range starting from {low_ind} to {up_ind}");
+        for x2_ind in low_ind..up_ind {
+            let x2 = x2_range[x2_ind];
+            let smooth = x1 * x2;
+            //println!("smooth: {smooth}, x1: {x1}, x2: {x2}");
+            assert!(smooth >= a && smooth <= b);
+            smooth_set.insert(smooth);
+        }
+    }
+    let mut smooths = smooth_set.into_iter().collect::<Vec<u128>>();
+    smooths.par_sort_unstable();
+    println!("Returning {} nrs for interval: [{a}, {b}]", smooths.len());
+    smooths
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let interval_upper_bound: u128;
-    let interval_lower_bound: u128;
+    let a: u128;
     let b: u128;
+    let B: u128;
     if args.len() == 3 {
         let n = u128::from_str_radix(&args[1], 10).unwrap();
-        b = u128::from_str_radix(&args[2], 10).unwrap();
-        interval_upper_bound = n+(4*n).integer_sqrt()+1;
-        interval_lower_bound = n-(4*n).integer_sqrt()+1;
+        B = u128::from_str_radix(&args[2], 10).unwrap();
+        a = n-(4*n).integer_sqrt()+1;
+        b = n+(4*n).integer_sqrt()+1;
     } else if args.len() == 4 {
-        interval_lower_bound = u128::from_str_radix(&args[1], 10).unwrap();
-        interval_upper_bound = u128::from_str_radix(&args[2], 10).unwrap();
-        b = u128::from_str_radix(&args[3], 10).unwrap();
+        a = u128::from_str_radix(&args[1], 10).unwrap();
+        b = u128::from_str_radix(&args[2], 10).unwrap();
+        B = u128::from_str_radix(&args[3], 10).unwrap();
     } else {
         println!("Please supply 2 or 3 arguments (either n b or lower_bound upper_bound b)");
         return;
     }
     println!("{} primes generated.", PRIMES.len());
-    println!("Interval: [{interval_lower_bound} to {interval_upper_bound}]");
-    let ind: usize = PRIMES.binary_search(&b).unwrap();
-
-    let smooths_upper_bound = (b*b*interval_upper_bound).integer_sqrt();
-    let smooths_lower_bound = (interval_lower_bound/(b*b)).integer_sqrt();
-    println!("Considering smooths in [{smooths_lower_bound}, {smooths_upper_bound}]");
-
-    let smooths = Smooths::new(smooths_upper_bound, ind);
-
-    let mut upper_bound_smaller_factor = interval_upper_bound.integer_sqrt();
-    if upper_bound_smaller_factor * upper_bound_smaller_factor < interval_upper_bound {
-        upper_bound_smaller_factor += 1;
-    }
-    //println!("upper_bound_smaller_factor: {upper_bound_smaller_factor }");
-    let lower_bound_bigger_factor = interval_lower_bound.integer_sqrt();
-    //println!("lower_bound_bigger_factor: {lower_bound_bigger_factor}");
-
-    let sub_ind = smooths.smooths.len()-1;
-    let slb_ind = match smooths.smooths.binary_search(&smooths_lower_bound) {
-        Ok(i) => i,
-        Err(i) => i,
-    };
-
-    let ub_small = smooths.find_ind_le(upper_bound_smaller_factor).unwrap();
-    let lb_big = match smooths.smooths.binary_search(&lower_bound_bigger_factor) {
-        Ok(i) => i,
-        Err(i) => i,
-    };
+    println!("Interval: [{a} to {b}]");
+    println!("{:?}", smooths_in(a, b, B));
 
 
-    //println!("Lower part [{smooths_lower_bound}, {upper_bound_smaller_factor}]");
-    //println!("The first smooth number in there: {}", smooths.smooths[slb_ind]);
-    //println!("The last smooth number in there: {}", smooths.smooths[ub_small]);
-    //println!("Upper part [{lower_bound_bigger_factor}, {smooths_upper_bound}]");
-    //println!("The first smooth number in there: {}", smooths.smooths[lb_big]);
-    //println!("The last smooth number in there: {}", smooths.smooths[sub_ind]);
-    let upper_part = &smooths.smooths[lb_big..=sub_ind];
-    let lower_part = &smooths.smooths[slb_ind..=ub_small];
-
-    for small in lower_part {
-        let up = interval_upper_bound/small;
-        let low = interval_lower_bound/small;
-        //println!("For {small}, the interval for the bigger number is: [{low}, {up}]");
-        // up_ind is not inclusive
-        let up_ind = match upper_part.binary_search(&up) {
-            Ok(i) => {
-                println!("Found {b}-smooth number {} = {}*{}", upper_part[i]*small, upper_part[i], small);
-                return;
-            },
-            Err(i) => i,
-        };
-        // low_ind is inclusive
-        let low_ind = match upper_part.binary_search(&low) {
-            Ok(i) => {
-                println!("Found {b}-smooth number {} = {}*{}", upper_part[i]*small, upper_part[i], small);
-                return;
-            },
-            Err(i) => i,
-        };
-        //println!("Checking interval from {low_ind} to {up_ind}");
-        for big in low_ind..up_ind {
-            println!("Found {b}-smooth number {} = {}*{}", upper_part[big]*small, upper_part[big], small);
-            return;
-        }
-    }
-    println!("No {b}-smooth number in [{interval_lower_bound}, {interval_upper_bound}]");
 }
