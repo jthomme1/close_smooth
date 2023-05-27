@@ -93,6 +93,23 @@ impl Composite {
         }
         true
     }
+
+    pub fn smallest_prime_ind(&self) -> usize {
+        for i in 0..self.es.len() {
+            if self.es[i] != 0 {
+                return i;
+            }
+        }
+        panic!("Unreachable!");
+    }
+
+    pub fn nr_factors(&self) -> u32 {
+        let mut ret = 0;
+        for e in self.es.iter() {
+            ret += e;
+        }
+        ret
+    }
 }
 
 impl Clone for Composite {
