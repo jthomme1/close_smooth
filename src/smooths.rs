@@ -11,7 +11,7 @@ pub struct Smooths {
     pub b_ind: usize,
     pub lower_bound: u128,
     pub upper_bound: u128,
-    pub smooths: Vec<u128>,
+    pub smooths: Vec<Composite>,
 }
 
 impl Smooths {
@@ -39,11 +39,11 @@ impl Smooths {
                 return vec![];
             }
 
-            let mut new_smooths: Vec<u128> = vec![];
+            let mut new_smooths: Vec<Composite> = vec![];
 
             loop {
                 if c.value >= lower_bound {
-                    new_smooths.push(c.value);
+                    new_smooths.push(c.clone());
                 }
                 if !c.inc_vec_by_n_with_bound(*NUM_THREADS, upper_bound) {
                     break;
@@ -60,12 +60,29 @@ impl Smooths {
             }
             handles.into_iter()
                 .map(|h| h.join().unwrap())
-                .collect::<Vec<Vec<u128>>>()
+                .collect::<Vec<Vec<Composite>>>()
                 .concat()
         });
         new_smooths.par_sort_unstable();
         self.smooths.append(&mut new_smooths);
         self.smooths.par_sort_unstable();
     }
-}
 
+    pub fn len(&self) -> usize {
+        self.smooths.len()
+    }
+
+    pub fn by_factors(&self) -> Vec<Vec<u128>> {
+        println!("by_factors start");
+        let mut ret = vec![vec![]; usize::try_from(self.upper_bound.ilog2()+1).unwrap()];
+        for smooth in self.smooths.iter() {
+            ret[usize::try_from(smooth.nr_factors()).unwrap()].push(smooth.value);
+        }
+        println!("by_factors end");
+        ret
+    }
+
+    pub fn to_u128(&self) -> Vec<u128> {
+        self.smooths.iter().map(|x| x.value).collect()
+    }
+}

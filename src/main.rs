@@ -6,8 +6,9 @@ use std::env;
 use integer_sqrt::IntegerSquareRoot;
 use rayon::prelude::*;
 use std::collections::HashMap;
-use rand::seq::SliceRandom;
-use std::cmp::{min, max};
+//use rand::seq::SliceRandom;
+use std::cmp::{/*min, */max};
+//use average::Skewness;
 
 pub mod composite;
 pub mod smooths;
@@ -22,6 +23,7 @@ static PRIMES: Lazy<Vec<u128>> = Lazy::new(||
                                            .map(|x| u128::try_from(x).unwrap())
                                            .collect());
 
+#[allow(non_snake_case)]
 fn smooths_in(a: u128, b: u128, B: u128) -> Vec<u128> {
     println!("Recursing into interval: [{a}, {b}]");
     assert!(a < b);
@@ -30,9 +32,8 @@ fn smooths_in(a: u128, b: u128, B: u128) -> Vec<u128> {
         println!("Entering base case for interval: [{a}, {b}]");
         let ind: usize = PRIMES.binary_search(&B).unwrap();
         let smooths = Smooths::new(a, b, ind);
-        let ret = smooths.smooths.concat();
-        println!("Returning {} nrs from base case for interval: [{a}, {b}]", ret.len());
-        return ret;
+        println!("Returning {} nrs from base case for interval: [{a}, {b}]", smooths.len());
+        return smooths.to_u128();
     }
     // rounding down is fine, because rounding up would result in a product outside the bounds
     // also, rounding down we don't lose anything because we're considering integers
@@ -77,9 +78,11 @@ fn smooths_in(a: u128, b: u128, B: u128) -> Vec<u128> {
 
     let mut smooth_set = HashMap::new();
 
-    let mut rng = &mut rand::thread_rng();
+    //let mut rng = &mut rand::thread_rng();
 
-    for x1 in x1_range {//.choose_multiple(&mut rng, min(100000, ub_x1_ind - lb_x1_ind)) {
+    //let mut x1_hits: Vec<u32> = vec![];
+
+    for x1 in x1_range {//.choose_multiple(&mut rng, (ub_x1_ind - lb_x1_ind)/usize::try_from(B.integer_sqrt()).unwrap()) {
         let up = b/x1;
         let mut low = a/x1;
         if low * x1 < a {
@@ -97,6 +100,7 @@ fn smooths_in(a: u128, b: u128, B: u128) -> Vec<u128> {
             Ok(i) => i,
             Err(i) => i,
         };
+        //x1_hits.push(u32::try_from(if low_ind >= up_ind {0} else {up_ind - low_ind}).unwrap());
         let elem_x2_range = &x2_range[low_ind..up_ind];
         //println!("x1: {x1}, x2 range: {elem_x2_range:?}");
         for x2 in elem_x2_range {//.choose_multiple(&mut rng, min(100000, up_ind - low_ind)) {
@@ -109,7 +113,11 @@ fn smooths_in(a: u128, b: u128, B: u128) -> Vec<u128> {
             };
         }
     }
-    println!("{:?}", smooth_set);
+    //let x1_skew: Skewness = x1_hits.into_iter().map(f64::from).collect();
+    //let mult_skew: Skewness = smooth_set.values().cloned().map(|x| f64::try_from(x).unwrap()).collect();
+    //println!("x1s: {}, mean: {}, variance: {}, skewness: {}", x1_skew.len(), x1_skew.mean(), x1_skew.sample_variance(), x1_skew.skewness());
+    //println!("multiplicities: {}, mean: {}, variance: {}, skewness: {}", smooth_set.values().len(), mult_skew.mean(), mult_skew.sample_variance(), mult_skew.skewness());
+    //println!("{:?}", smooth_set);
     //let vals = smooth_set.values().cloned().collect::<Vec<usize>>();
     //let mut val_map = HashMap::new();
     //for val in vals.iter() {
@@ -119,12 +127,14 @@ fn smooths_in(a: u128, b: u128, B: u128) -> Vec<u128> {
     //    };
     //}
     //println!("{:?}", val_map);
-    let mut smooths = smooth_set.keys().cloned().collect::<Vec<u128>>();
+    let mut smooths = smooth_set.keys().into_iter().map(|x| *x).collect::<Vec<u128>>();
     smooths.par_sort_unstable();
     println!("Returning {} nrs for interval: [{a}, {b}]", smooths.len());
     smooths
 }
 
+
+#[allow(non_snake_case)]
 fn main() {
     let args: Vec<String> = env::args().collect();
     let a: u128;
