@@ -6,8 +6,8 @@ use std::env;
 use integer_sqrt::IntegerSquareRoot;
 use rayon::prelude::*;
 use std::collections::HashMap;
-//use rand::seq::SliceRandom;
-use std::cmp::{/*min, */max};
+use rand::seq::SliceRandom;
+use std::cmp::{min, max};
 //use average::Skewness;
 
 pub mod composite;
@@ -78,11 +78,11 @@ fn smooths_in(a: u128, b: u128, B: u128) -> Vec<u128> {
 
     let mut smooth_set = HashMap::new();
 
-    //let mut rng = &mut rand::thread_rng();
+    let mut rng = &mut rand::thread_rng();
 
     //let mut x1_hits: Vec<u32> = vec![];
 
-    for x1 in x1_range {//.choose_multiple(&mut rng, (ub_x1_ind - lb_x1_ind)/usize::try_from(B.integer_sqrt()).unwrap()) {
+    for x1 in x1_range.choose_multiple(&mut rng, (ub_x1_ind - lb_x1_ind)/usize::try_from(B.integer_sqrt()).unwrap()) {
         let up = b/x1;
         let mut low = a/x1;
         if low * x1 < a {
@@ -103,7 +103,7 @@ fn smooths_in(a: u128, b: u128, B: u128) -> Vec<u128> {
         //x1_hits.push(u32::try_from(if low_ind >= up_ind {0} else {up_ind - low_ind}).unwrap());
         let elem_x2_range = &x2_range[low_ind..up_ind];
         //println!("x1: {x1}, x2 range: {elem_x2_range:?}");
-        for x2 in elem_x2_range {//.choose_multiple(&mut rng, min(100000, up_ind - low_ind)) {
+        for x2 in elem_x2_range.choose_multiple(&mut rng, min(100000, up_ind - low_ind)) {
             let smooth = x1 * x2;
             //println!("smooth: {smooth}, x1: {x1}, x2: {x2}");
             assert!(smooth >= a && smooth <= b);
