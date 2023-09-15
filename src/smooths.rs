@@ -1,88 +1,104 @@
 use std::vec::Vec;
 use std::thread;
 use crate::composite::Composite;
-use once_cell::sync::Lazy;
+//use once_cell::sync::Lazy;
 use super::PRIMES;
 use rayon::prelude::*;
 
-static NUM_THREADS: Lazy<usize> = Lazy::new(|| thread::available_parallelism().unwrap().get());
+//static NUM_THREADS: Lazy<usize> = Lazy::new(|| thread::available_parallelism().unwrap().get());
 
 pub struct Smooths {
     pub b_ind: usize,
     pub lower_bound: u128,
     pub upper_bound: u128,
-    pub smooths: Vec<Composite>,
+    // each exponent per prime
+    pub state: Vec<Vec<Composite>>,
+    pub smooths: Vec<u128>,
 }
 
 impl Smooths {
-    pub fn new(lower_bound: u128, upper_bound: u128, b_ind: usize) -> Self {
-        let mut ret = Smooths {
+    pub fn new(lower_bound: u128, upper_bound: u128, b_ind: usize, state: &Vec<Vec<Composite>>) -> Self {
+        Smooths {
             b_ind: b_ind,
             lower_bound: lower_bound,
             upper_bound: upper_bound,
+            state: state.clone(),
             smooths: vec![],
-        };
-        for i in 0..=b_ind {
-            ret.add_prime(i);
-            println!("Done with {}", PRIMES[i]);
         }
-        ret
     }
 
-    fn add_prime(&mut self, ind: usize) {
+    pub fn add_smooths(&mut self) {
         let lower_bound = self.lower_bound;
         let upper_bound = self.upper_bound;
-        let generate_with_fixed = |start_off: usize| {
-            let mut c = Composite::new(ind, 1);
-
-            if !c.inc_vec_by_n_with_bound(start_off, upper_bound) {
-                return vec![];
-            }
-
-            let mut new_smooths: Vec<Composite> = vec![];
-
-            loop {
-                if c.value >= lower_bound {
-                    new_smooths.push(c.clone());
+        let b_ind = self.b_ind;
+        let state_c = &self.state;
+        let generate_some = |i: usize, e: u32| {
+            let mut new_smooths = vec![];
+            let ec = usize::try_from(e).unwrap();
+            let mut state = {
+                if state_c.len() == 0 {
+                    Composite::new(i, e)
+                } else {
+                    state_c[i][ec-1].clone()
                 }
-                if !c.inc_vec_by_n_with_bound(*NUM_THREADS, upper_bound) {
-                    break;
-                }
+            };
+            let mut stop = Composite::new(i, e+1);
+            if stop.value > upper_bound {
+                stop = Composite::new(i, 0);
             }
-            new_smooths.par_sort_unstable();
-            new_smooths
+            let mut c: usize = 0;
+            //let mut flag = false;
+            while state != stop && c != 5000 {
+                //flag = true;
+                if state.value >= lower_bound {
+                    new_smooths.push(state.value);
+                }
+                state.inc_vec_with_bound(upper_bound);
+                c += 1;
+            }
+            /*if flag && state == stop {
+                println!("Generated all {}-smooth with exponent {e} numbers up to {}", PRIMES[i], upper_bound);
+            } else {
+                println!("ind: {i}, {:?}", state);
+            }*/
+            (new_smooths, state)
         };
-        let mut new_smooths = thread::scope(|s| {
+        let (mut new_smooths, new_state): (Vec<u128>, Vec<Vec<Composite>>) = thread::scope(|s| {
             let mut handles = vec![];
-            for i in 0..*NUM_THREADS {
-                let h = s.spawn(move || generate_with_fixed(i));
-                handles.push(h);
+            for i in 0..=b_ind {
+                let mut inner_handles = vec![];
+                let mut e = 1;
+                let p = u128::try_from(PRIMES[i]).unwrap();
+                let mut cur = p;
+                loop {
+                    let h = s.spawn(move || generate_some(i, e));
+                    inner_handles.push(h);
+                    if cur > upper_bound/p {
+                        break;
+                    }
+                    cur *= p;
+                    e += 1;
+                }
+                handles.push(inner_handles);
             }
-            handles.into_iter()
-                .map(|h| h.join().unwrap())
-                .collect::<Vec<Vec<Composite>>>()
-                .concat()
+            let mut all_smooth_vec: Vec<Vec<u128>> = vec![];
+            let mut new_state: Vec<Vec<Composite>> = vec![];
+            for ih in handles {
+                let (smooths, states): (Vec<Vec<u128>>, Vec<Composite>) = ih.into_iter()
+                  .map(|h| h.join().unwrap())
+                  .unzip();
+                new_state.push(states);
+                all_smooth_vec.push(smooths.concat());
+            }
+            (all_smooth_vec.concat(), new_state)
         });
         new_smooths.par_sort_unstable();
         self.smooths.append(&mut new_smooths);
         self.smooths.par_sort_unstable();
+        self.state = new_state;
     }
 
     pub fn len(&self) -> usize {
         self.smooths.len()
-    }
-
-    pub fn by_factors(&self) -> Vec<Vec<u128>> {
-        println!("by_factors start");
-        let mut ret = vec![vec![]; usize::try_from(self.upper_bound.ilog2()+1).unwrap()];
-        for smooth in self.smooths.iter() {
-            ret[usize::try_from(smooth.nr_factors()).unwrap()].push(smooth.value);
-        }
-        println!("by_factors end");
-        ret
-    }
-
-    pub fn to_u128(&self) -> Vec<u128> {
-        self.smooths.iter().map(|x| x.value).collect()
     }
 }
