@@ -5,7 +5,7 @@ use primal;
 use std::env;
 use integer_sqrt::IntegerSquareRoot;
 use rayon::prelude::*;
-use std::collections::HashMap;
+use std::collections::BTreeSet;
 use rand::seq::SliceRandom;
 use std::cmp::{min, max};
 //use average::Skewness;
@@ -22,19 +22,12 @@ static PRIMES: Lazy<Vec<u128>> = Lazy::new(||
                                            .into_iter()
                                            .map(|x| u128::try_from(x).unwrap())
                                            .collect());
-
 #[allow(non_snake_case)]
-fn smooths_in(a: u128, b: u128, B: u128) -> Vec<u128> {
-    println!("Recursing into interval: [{a}, {b}]");
+fn one_smooth_in(a: u128, b: u128, B: u128) {
+    println!("Considering interval: [{a}, {b}]");
     assert!(a < b);
-    // base case
-    if a < B*B {
-        println!("Entering base case for interval: [{a}, {b}]");
-        let ind: usize = PRIMES.binary_search(&B).unwrap();
-        let smooths = Smooths::new(a, b, ind);
-        println!("Returning {} nrs from base case for interval: [{a}, {b}]", smooths.len());
-        return smooths.to_u128();
-    }
+    assert!(a > B*B);
+    assert!(B*25 > (a.ilog2()*a.ilog2()).into());
     // rounding down is fine, because rounding up would result in a product outside the bounds
     // also, rounding down we don't lose anything because we're considering integers
     let ub_x1 = b.integer_sqrt();
@@ -52,7 +45,99 @@ fn smooths_in(a: u128, b: u128, B: u128) -> Vec<u128> {
     if lb_x1 * lb_x1 < a/B {
         lb_x1 += 1;
     }
-    let smaller_smooths = smooths_in(lb_x1, ub_x2, B);
+    let mut smooths_per_level: Vec<Vec<u128>> = vec![];
+    loop {
+        some_smooths_in(lb_x1, ub_x2, B, &mut smooths_per_level, 0);
+        let smaller_smooths = &smooths_per_level[0];
+        let ub_x2_ind = smaller_smooths.len();
+        let lb_x1_ind = 0;
+
+        let ub_x1_ind = match smaller_smooths.binary_search(&ub_x1) {
+            Ok(i) => i+1,
+            Err(i) => i,
+        };
+        let lb_x2_ind = match smaller_smooths.binary_search(&lb_x2) {
+            Ok(i) => i,
+            Err(i) => i,
+        };
+
+        let x1_range = &smaller_smooths[lb_x1_ind..ub_x1_ind];
+        let x2_range = &smaller_smooths[lb_x2_ind..ub_x2_ind];
+
+        let mut rng = &mut rand::thread_rng();
+
+        let found = x1_range.choose_multiple(&mut rng, ub_x1_ind - lb_x1_ind).find(|&x1| {
+            let up = b/x1;
+            let mut low = a/x1;
+            if low * x1 < a {
+                low += 1;
+            }
+            low = max(low, *x1);
+            //println!("For {small}, the interval for the bigger number is: [{low}, {up}]");
+            // up_ind is not inclusive
+            let up_ind = match x2_range.binary_search(&up) {
+                Ok(i) => i+1,
+                Err(i) => i,
+            };
+            // low_ind is inclusive
+            let low_ind = match x2_range.binary_search(&low) {
+                Ok(i) => i,
+                Err(i) => i,
+            };
+            let elem_x2_range = &x2_range[low_ind..up_ind];
+            for x2 in elem_x2_range {
+                let smooth = x1 * x2;
+                assert!(smooth >= a && smooth <= b);
+                println!("Found {smooth}");
+                return true;
+            }
+            return false;
+        });
+        match found {
+            Some(_) => break,
+            None => continue,
+        };
+    }
+}
+
+#[allow(non_snake_case)]
+fn some_smooths_in(a: u128, b: u128, B: u128, smooths_per_level: &mut Vec<Vec<u128>>, level: usize) {
+    assert!(a < b);
+    // base case
+    if a < B*B {
+        if smooths_per_level.len() <= level {
+            println!("Entering base case for interval: [{a}, {b}]");
+            let ind: usize = PRIMES.binary_search(&B).unwrap();
+            let smooths = Smooths::new(a, b, ind);
+            smooths_per_level.push(smooths.to_u128());
+            println!("Exiting from base case with {} nrs for interval: [{a}, {b}]", smooths.len());
+        }
+        return;
+    }
+    if smooths_per_level.len() <= level {
+        smooths_per_level.push(vec![]);
+    }
+    let start_num = smooths_per_level[level].len();
+    println!("Considering interval [{a}, {b}] with currently {start_num} numbers");
+    // rounding down is fine, because rounding up would result in a product outside the bounds
+    // also, rounding down we don't lose anything because we're considering integers
+    let ub_x1 = b.integer_sqrt();
+    //println!("upper_bound_smaller_factor: {ub_x1}");
+    // we need to round up because otherwise we could get a product outside of the interval
+    // also, we don't lose anything rounding up because we're considering integers
+    let mut lb_x2 = a.integer_sqrt();
+    if lb_x2 * lb_x2 < b {
+        lb_x2 += 1;
+    }
+    //println!("lower_bound_bigger_factor: {lb_x2}");
+
+    let ub_x2 = (B*b).integer_sqrt();
+    let mut lb_x1 = (a/B).integer_sqrt();
+    if lb_x1 * lb_x1 < a/B {
+        lb_x1 += 1;
+    }
+    some_smooths_in(lb_x1, ub_x2, B, smooths_per_level, level+1);
+    let smaller_smooths = &smooths_per_level[level+1];
 
     let ub_x2_ind = smaller_smooths.len();
     let lb_x1_ind = 0;
@@ -76,13 +161,13 @@ fn smooths_in(a: u128, b: u128, B: u128) -> Vec<u128> {
     let x1_range = &smaller_smooths[lb_x1_ind..ub_x1_ind];
     let x2_range = &smaller_smooths[lb_x2_ind..ub_x2_ind];
 
-    let mut smooth_set = HashMap::new();
+    let mut smooth_set = BTreeSet::new();
 
     let mut rng = &mut rand::thread_rng();
 
     //let mut x1_hits: Vec<u32> = vec![];
 
-    for x1 in x1_range.choose_multiple(&mut rng, (ub_x1_ind - lb_x1_ind)/usize::try_from(B.integer_sqrt()).unwrap()) {
+    for x1 in x1_range.choose_multiple(&mut rng, min(1000, ub_x1_ind - lb_x1_ind)) {
         let up = b/x1;
         let mut low = a/x1;
         if low * x1 < a {
@@ -103,14 +188,15 @@ fn smooths_in(a: u128, b: u128, B: u128) -> Vec<u128> {
         //x1_hits.push(u32::try_from(if low_ind >= up_ind {0} else {up_ind - low_ind}).unwrap());
         let elem_x2_range = &x2_range[low_ind..up_ind];
         //println!("x1: {x1}, x2 range: {elem_x2_range:?}");
-        for x2 in elem_x2_range.choose_multiple(&mut rng, min(100000, up_ind - low_ind)) {
+        for x2 in elem_x2_range.choose_multiple(&mut rng, min(1000, up_ind - low_ind)) {
             let smooth = x1 * x2;
             //println!("smooth: {smooth}, x1: {x1}, x2: {x2}");
             assert!(smooth >= a && smooth <= b);
-            match smooth_set.get_mut(&smooth) {
+            /*match smooth_set.get_mut(&smooth) {
                 Some(v) => *v += 1,//.push((*x1, *x2)),
                 None => {smooth_set.insert(smooth, 1); ()},//vec![(*x1, *x2)]); ()},
-            };
+            };*/
+            smooth_set.insert(smooth);
         }
     }
     //let x1_skew: Skewness = x1_hits.into_iter().map(f64::from).collect();
@@ -127,10 +213,10 @@ fn smooths_in(a: u128, b: u128, B: u128) -> Vec<u128> {
     //    };
     //}
     //println!("{:?}", val_map);
-    let mut smooths = smooth_set.keys().into_iter().map(|x| *x).collect::<Vec<u128>>();
-    smooths.par_sort_unstable();
-    println!("Returning {} nrs for interval: [{a}, {b}]", smooths.len());
-    smooths
+    smooths_per_level[level].append(&mut smooth_set.into_iter().collect::<Vec<u128>>());
+    smooths_per_level[level].par_sort_unstable();
+    let end_num = smooths_per_level[level].len();
+    println!("Exiting from level {level} with {} nrs for interval: [{a}, {b}]", end_num - start_num);
 }
 
 
@@ -155,7 +241,7 @@ fn main() {
     }
     println!("{} primes generated.", PRIMES.len());
     println!("Interval: [{a} to {b}]");
-    println!("{:?}", smooths_in(a, b, B));
+    one_smooth_in(a, b, B);
 
 
 }
