@@ -174,7 +174,7 @@ fn some_smooths_in(a: &BigUint, b: &BigUint, B: u64, smooths_per_level: &mut Vec
         let mut rng = &mut rand::thread_rng();
 
         //let mut x1_hits: Vec<u32> = vec![];
-        for x1 in x1_range.choose_multiple(&mut rng, min(1000, ub_x1_ind - lb_x1_ind)) {
+        for x1 in x1_range.choose_multiple(&mut rng, min(10000, ub_x1_ind - lb_x1_ind)) {
             let up = b.clone()/x1;
             let mut low = a.clone()/x1;
             if low.clone() * x1 < *a {
@@ -210,7 +210,7 @@ fn some_smooths_in(a: &BigUint, b: &BigUint, B: u64, smooths_per_level: &mut Vec
         new_smooths
     };
 
-    let mut new_smooths: Vec<BigUint> = thread::scope(|s| {
+    let new_smooths: Vec<BigUint> = thread::scope(|s| {
         let mut handles = vec![];
         for _ in 0..*NUM_THREADS{
             let h = s.spawn(move || smooth_combs());
@@ -235,11 +235,11 @@ fn some_smooths_in(a: &BigUint, b: &BigUint, B: u64, smooths_per_level: &mut Vec
     //    };
     //}
     //println!("{:?}", val_map);
-    smooths_per_level[level].append(&mut new_smooths);
+    smooths_per_level[level] = new_smooths;
     smooths_per_level[level].par_sort_unstable();
     smooths_per_level[level].dedup();
     let end_num = smooths_per_level[level].len();
-    println!("Exiting from level {level} with {} new nrs for interval: [{a}, {b}]", end_num - start_num);
+    println!("Exiting from level {level} with {} nrs for interval: [{a}, {b}]", end_num);
 }
 
 

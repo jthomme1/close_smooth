@@ -48,7 +48,7 @@ impl Smooths {
             }
             let mut c: usize = 0;
             //let mut flag = false;
-            while state != stop && c != 5000 {
+            while state != stop && c != 20000 {
                 //flag = true;
                 if state.value >= lower_bound {
                     new_smooths.push(state.value);
